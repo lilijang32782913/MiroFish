@@ -314,8 +314,43 @@ const fetchGraphData = async () => {
 }
 
 const startPollingTask = (taskId) => {
+  stopPolling()
   pollTaskStatus(taskId)
   pollTimer = setInterval(() => pollTaskStatus(taskId), 2000)
+}
+
+const recoverFromMissingTask = async (taskId) => {
+  stopPolling()
+  addLog(`Task ${taskId} not found. Refreshing project state...`)
+
+  try {
+    const projRes = await getProject(currentProjectId.value)
+    if (!projRes.success) {
+      addLog(`Failed to refresh project: ${projRes.error || 'unknown error'}`)
+      return
+    }
+
+    projectData.value = projRes.data
+    updatePhaseByStatus(projRes.data.status)
+
+    if (projRes.data.status === 'graph_completed' && projRes.data.graph_id) {
+      addLog('Project is already graph_completed. Loading graph directly...')
+      stopGraphPolling()
+      currentPhase.value = 2
+      await loadGraph(projRes.data.graph_id)
+      return
+    }
+
+    if (projRes.data.status === 'graph_building') {
+      addLog('Project is still graph_building, but task context was lost (possibly after backend restart).')
+      addLog('Please click refresh or restart build from Step 1 if progress does not continue.')
+      return
+    }
+
+    addLog(`Current project status: ${projRes.data.status}`)
+  } catch (err) {
+    addLog(`Recovery failed: ${err.message}`)
+  }
 }
 
 const pollTaskStatus = async (taskId) => {
@@ -348,8 +383,17 @@ const pollTaskStatus = async (taskId) => {
         error.value = task.error
         addLog(`Graph build task failed: ${task.error}`)
       }
+    } else {
+      // Non-2xx is usually thrown by axios; this is for defensive handling.
+      addLog(`Task query failed: ${res.error || 'unknown error'}`)
     }
   } catch (e) {
+    const status = e?.response?.status
+    if (status === 404) {
+      await recoverFromMissingTask(taskId)
+      return
+    }
+    addLog(`Task polling error: ${e.message}`)
     console.error(e)
   }
 }

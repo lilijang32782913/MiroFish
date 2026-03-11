@@ -4,13 +4,14 @@
 """
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 # 加载项目根目录的 .env 文件
-# 路径: MiroFish/.env (相对于 backend/app/config.py)
-project_root_env = os.path.join(os.path.dirname(__file__), '../../.env')
+# backend/app/config.py -> backend -> MiroFish
+project_root_env = Path(__file__).resolve().parents[2] / '.env'
 
-if os.path.exists(project_root_env):
+if project_root_env.exists():
     load_dotenv(project_root_env, override=True)
 else:
     # 如果根目录没有 .env，尝试加载环境变量（用于生产环境）
